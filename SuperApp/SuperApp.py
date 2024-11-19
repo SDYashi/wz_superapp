@@ -6,7 +6,7 @@ from flask_cors import CORS
 import bcrypt
 from ERP_APIServices import ERP_APIServices
 from NGB_APIServices import NGB_APIServices
-from MYDB_Trigger import MongoDBTrigger
+from MY_DBTrigger import MongoDBTrigger
 
 app = Flask(__name__)
 
@@ -350,9 +350,10 @@ def update_erp_notify_status():
         }
         
         # Call the NotificationAPI to submit the notification status to the remote server
-        remote_response = ERP_APIServices.submit_notification_status_erp(notification_data)
+        # remote_response = ERP_APIServices.submit_notification_status_erp(notification_data)
     
-    if remote_response:
+    
+    # if remote_response:
         # Prepare the update query
         update_query = {
             "erp_notify_status": data["erp_notify_status"],
@@ -369,8 +370,8 @@ def update_erp_notify_status():
             return jsonify({"msg": "Notification status updated successfully."}), 200
         else:
             return jsonify({"msg": "Notification status not updated. Please try again."}), 404
-    else:
-        return jsonify({"msg": "Failed to send notification status to ERP server."}), 500
+    # else:
+    #     return jsonify({"msg": "Failed to send notification status to ERP server."}), 500
  
 @app.route('/notify-status', methods=['GET'])
 def get_notification_status():

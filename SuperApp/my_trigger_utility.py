@@ -4,7 +4,7 @@ import threading
 import time
 
 class MongoDBTrigger:
-    def __init__(self, uri, db_name, collection_name, erp_collection_name):
+    def __init__(self, uri, db_name, collection_name,erp_collection_name):
         self.client = MongoClient(uri)
         self.db = self.client[db_name]
         self.collection = self.db[collection_name]
