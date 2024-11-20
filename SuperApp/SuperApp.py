@@ -4,14 +4,16 @@ from flask_pymongo import PyMongo
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
 import bcrypt
-from ERP_APIServices import ERP_APIServices
-from NGB_APIServices import NGB_APIServices
-from MY_DBTrigger import MongoDBTrigger
+from SuperApp.kafka import init_kafka_app
+from SuperApp.shared_api.erp_api_services import ERP_APIServices
+from SuperApp.shared_api.ngb_api_services import NGB_APIServices
+
+
 
 app = Flask(__name__)
 
-#Intialize trigger function for change.
-trigger = MongoDBTrigger("mongodb://localhost:27017", "admin", "mpwz_notifylist_erp")
+# Register Kafka Blueprint with the app
+init_kafka_app(app)
 
 # Cross Origin allowing Configuration
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -23,10 +25,6 @@ mongo = PyMongo(app)
 # JWT Configuration
 app.config['JWT_SECRET_KEY'] = secrets.token_hex()  
 jwt = JWTManager(app)
-
-@app.route('/', methods=['GET'])
-def welcome_page():
-   return ("  Welcome MPWZ ADMIN "), 400
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -61,52 +59,6 @@ def change_password():
     mongo.db.mpwz_users_access_locations.update_one({"username": current_user['username']}, {"$set": {"password": hashed_password}})    
     return jsonify({"msg": "Password changed successfully!"}), 200
 
-# @app.route('/set_common_password', methods=['PUT'])
-# @jwt_required()
-# def set_common_password():
-#     # Get the common password
-#     common_password = "123456"
-#     # Hash the common password
-#     hashed_password = bcrypt.hashpw(common_password.encode('utf-8'), bcrypt.gensalt())
-
-#     # Update the password for all users in the collection
-#     result = mongo.db.mpwz_users_access_locations.update_many(
-#         {},  # Empty filter to match all documents
-#         {"$set": {"password": hashed_password}}
-#     )
-
-#     # Check how many users were modified
-#     if result.modified_count > 0:
-#         return jsonify({"msg": f"Password set to '123456' for {result.modified_count} users."}), 200
-#     else:
-#         return jsonify({"msg": "No users found or password unchanged."}), 404
-    
-@app.route('/set_user_password', methods=['PUT'])
-@jwt_required()
-def set_user_password():
-    # Get the data from the request
-    data = request.get_json()
-    username = data.get("username")
-    new_password = data.get("new_password")
-
-    if not username or not new_password:
-        return jsonify({"msg": "Username and new password are required."}), 400
-
-    # Hash the new password
-    hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
-
-    # Update the password for the specified user in the database
-    result = mongo.db.mpwz_users_access_locations.update_one(
-        {"username": username},
-        {"$set": {"password": hashed_password}}
-    )
-
-    # Check if the user was found and the password was updated
-    if result.modified_count > 0:
-        return jsonify({"msg": f"Password for user '{username}' changed successfully!"}), 200
-    else:
-        return jsonify({"msg": f"User  '{username}' not found or password unchanged."}), 404 
-
 @app.route('/userprofile', methods=['GET'])
 @jwt_required()
 def profile():
@@ -119,59 +71,38 @@ def profile():
     else:
         return jsonify({"msg": "User  not found"}), 404
 
-@app.route('/action-history-erp', methods=['GET', 'POST'])
+@app.route('/action-history', methods=['GET', 'POST'])
 @jwt_required()
-def action_history_erp():
+def action_history():
     current_user = get_jwt_identity()
     username = current_user['username']
+    application_type = request.args.get('application_type')  # Get the application type from query parameters
 
     if request.method == 'GET':
-        # Handle GET request to fetch action history
-        action_history_records = mongo.db.action_history_erp.find(
-            {"erp_notify_to_id": username},  
-            {"_id": 0}
-        )
-        # Convert cursor to a list
-        action_history_list = list(action_history_records)
-
-        if action_history_list:
-            return jsonify(action_history_list), 200
+        if application_type == 'erp':
+            action_history_records = mongo.db.action_history_erp.find(
+               {
+                    "$or": [
+                        {"erp_notify_to_id": username},
+                        {"erp_notify_from_id": username}
+                    ]
+                },
+                {"_id": 0}
+            )
+            action_history_list = list(action_history_records)
+        elif application_type == 'ngb':
+            action_history_records = mongo.db.action_history_ngb.find(
+                {
+                    "$or": [
+                        {"ngb_notify_to_id": username},
+                        {"ngb_notify_from_id": username}
+                    ]
+                },
+                {"_id": 0}
+            )
+            action_history_list = list(action_history_records)
         else:
-            return jsonify({"msg": "No action history found."}), 404
-
-    elif request.method == 'POST':
-        # Handle POST request to insert action history
-        data = request.json
-
-        required_fields = ["erp_action_datetime", "erp_app_id", "erp_notify_details", 
-                           "erp_notify_from_id", "erp_notify_from_name", 
-                           "erp_notify_refsys_id", "erp_notify_remark", 
-                           "erp_notify_to_id", "erp_notify_to_name", 
-                           "erp_sequence_no", "mpwz_id"]
-
-        if not all(field in data for field in required_fields):
-            return jsonify({"error": "Missing fields"}), 400
-
-        data['erp_notify_from_id'] = username  
-
-        # Insert the new record into MongoDB
-        mongo.db.action_history_erp.insert_one(data)
-        
-        return jsonify(data), 201
-
-@app.route('/action-history-ngb', methods=['GET', 'POST'])
-@jwt_required()
-def action_history_ngb():
-    current_user = get_jwt_identity()
-    username = current_user['username']
-
-    if request.method == 'GET':
-        action_history_records = mongo.db.action_history_ngb.find(
-            {"ngb_notify_to_id": username},  
-            {"_id": 0}
-        )
-        # Convert cursor to a list
-        action_history_list = list(action_history_records)
+            return jsonify({"error": "Invalid application type"}), 400
 
         if action_history_list:
             return jsonify(action_history_list), 200
@@ -180,94 +111,355 @@ def action_history_ngb():
 
     elif request.method == 'POST':
         data = request.json
-        # Validate the data (basic validation)
-        required_fields = ["mpwz_id", "ngb_action_datetime", "ngb_app_id", 
-                           "ngb_notify_details", "ngb_notify_from_id", 
-                           "ngb_notify_from_name", "ngb_notify_refsys_id", 
-                           "ngb_notify_remark", "ngb_notify_to_id", 
-                           "ngb_notify_to_name", "ngb_sequence_no"]
-        
-        if not all(field in data for field in required_fields):
-            return jsonify({"error": "Missing fields"}), 400
-        
-        data['ngb_notify_from_id'] = username  
-        mongo.db.action_history_ngb.insert_one(data)
-        
-        # Return the newly created record with a 201 status code
-        return jsonify(data), 201
 
-@app.route('/my-request-history-erp', methods=['GET'])
+        if application_type == 'erp':
+            required_fields = ["erp_action_datetime", "erp_app_id", "erp_notify_details", 
+                               "erp_notify_from_id", "erp_notify_from_name", 
+                               "erp_notify_refsys_id", "erp_notify_remark", 
+                               "erp_notify_to_id", "erp_notify_to_name", 
+                               "erp_sequence_no", "mpwz_id"]
+
+            if not all(field in data for field in required_fields):
+                return jsonify({"error": "Missing fields"}), 400
+
+            data['erp_notify_from_id'] = username  
+            mongo.db.action_history_erp.insert_one(data)
+            return jsonify(data), 201
+
+        elif application_type == 'ngb':
+            required_fields = ["mpwz_id", "ngb_action_datetime", "ngb_app_id", 
+                               "ngb_notify_details", "ngb_notify_from_id", 
+                               "ngb_notify_from_name", "ngb_notify_refsys_id", 
+                               "ngb_notify_remark", "ngb_notify_to_id", 
+                               "ngb_notify_to_name", "ngb_sequence_no"]
+            
+            if not all(field in data for field in required_fields):
+                return jsonify({"error": "Missing fields"}), 400
+            
+            data['ngb_notify_from_id'] = username  
+            mongo.db.action_history_ngb.insert_one(data)
+            return jsonify(data), 201
+
+        else:
+            return jsonify({"error": "Invalid application type"}), 400
+
+@app.route('/my-request-notify-list', methods=['GET'])
 @jwt_required()
-def my_action_history_erp():
+def my_request_notification_list():
     current_user = get_jwt_identity()
     username = current_user['username']
-    print(username)
-    action_history_records = mongo.db.action_history_erp.find(
-          {"erp_notify_from_id": username},  
-          {"_id": 0}
-    )
-    # Convert cursor to a list
-    action_history_list = list(action_history_records)
+    application_type = request.args.get('application_type')
+    notification_status = request.args.get('notification_status')  # Optional parameter
 
-    if action_history_list:
-        return jsonify(action_history_list), 200
-    else:
-        return jsonify({"msg": "No action history found."}), 404
+    valid_application_types = ['erp', 'ngb']
+    response_data = {
+        'username': username,
+        'notifications': []
+    }
 
-@app.route('/my-request-history-ngb', methods=['GET'])
+    try:
+        # Initialize lists for each application type
+        erp_notifications = []
+        ngb_notifications = []
+
+        # If application_type is provided and valid
+        if application_type:
+            if application_type not in valid_application_types:
+                return jsonify({"msg": "Invalid application type specified."}), 400
+
+            # Build the query filter based on the application type
+            if application_type == 'erp':
+                query_filter = {"erp_notify_from_id": username}
+                if notification_status:
+                    query_filter["erp_notify_status"] = notification_status  # Filter by status if provided
+                action_history_records = mongo.db.mpwz_notifylist_erp.find(query_filter, {"_id": 0})
+                erp_notifications = list(action_history_records)
+
+            elif application_type == 'ngb':
+                query_filter = {"ngb_notify_from_id": username}
+                if notification_status:
+                    query_filter["ngb_notify_status"] = notification_status  # Filter by status if provided
+                action_history_records = mongo.db.mpwz_notifylist_ngb.find(query_filter, {"_id": 0})
+                ngb_notifications = list(action_history_records)
+
+        # If no application_type is provided, query both collections
+        else:
+            # Query ERP notifications
+            query_filter_erp = {"erp_notify_from_id": username}
+            if notification_status:
+                query_filter_erp["erp_notify_status"] = notification_status  # Filter by status if provided
+            action_history_records_erp = mongo.db.mpwz_notifylist_erp.find(query_filter_erp, {"_id": 0})
+            erp_notifications = list(action_history_records_erp)
+
+            # Query NGB notifications
+            query_filter_ngb = {"ngb_notify_from_id": username}
+            if notification_status:
+                query_filter_ngb["ngb_notify_status"] = notification_status  # Filter by status if provided
+            action_history_records_ngb = mongo.db.mpwz_notifylist_ngb.find(query_filter_ngb, {"_id": 0})
+            ngb_notifications = list(action_history_records_ngb)
+
+        # Add notifications for ERP if any
+        if erp_notifications:
+            response_data['notifications'].append({
+                "application_name": "erp",
+                "pending_count": len(erp_notifications),
+                "notification": erp_notifications
+            })
+
+        # Add notifications for NGB if any
+        if ngb_notifications:
+            response_data['notifications'].append({
+                "application_name": "ngb",
+                "pending_count": len(ngb_notifications),
+                "notification": ngb_notifications
+            })
+
+        # If no notifications were found, notify the user
+        if not response_data['notifications']:
+            response_data['msg'] = "No notifications found."
+
+    except Exception as e:
+        return jsonify({"msg": "Error retrieving notifications.", "error": str(e)}), 500
+
+    return jsonify(response_data), 200
+
+@app.route('/my-request-notify-count', methods=['GET'])
 @jwt_required()
-def my_action_history_ngb():
+def my_request_notification_count():
     current_user = get_jwt_identity()
     username = current_user['username']
-    print(username)
-    action_history_records = mongo.db.action_history_ngb.find(
-          {"ngb_notify_from_id": username},  
-          {"_id": 0}
-    )
-    # Convert cursor to a list
-    action_history_list = list(action_history_records)
+    application_type = request.args.get('application_type')
+    notification_status = request.args.get('notification_status')
 
-    if action_history_list:
-        return jsonify(action_history_list), 200
-    else:
-        return jsonify({"msg": "No action history found."}), 404
+    valid_application_types = ['erp', 'ngb']
+    total_pending_count = 0
+    response_data = {
+        'username': username,
+        'total_pending_count': 0,
+        'notification_status': []
+    }
 
-@app.route('/pending-notify-erp', methods=['GET'])
+    try:
+        # Initialize pending counts for each application type
+        erp_pending_count = 0
+        ngb_pending_count = 0
+
+        # If application_type is provided and valid
+        if application_type:
+            if application_type not in valid_application_types:
+                return jsonify({"msg": "Invalid application type specified."}), 400
+
+            # Build the query filter based on the application type
+            if application_type == 'erp':
+                query_filter = {"erp_notify_from_id": username}
+                if notification_status:
+                    query_filter["erp_notify_status"] = notification_status
+                action_history_records = mongo.db.mpwz_notifylist_erp.find(query_filter, {"_id": 0})
+                action_history_list = list(action_history_records)
+                erp_pending_count = len(action_history_list)
+
+            elif application_type == 'ngb':
+                query_filter = {"ngb_notify_from_id": username}
+                if notification_status:
+                    query_filter["ngb_notify_status"] = notification_status
+                action_history_records = mongo.db.mpwz_notifylist_ngb.find(query_filter, {"_id": 0})
+                action_history_list = list(action_history_records)
+                ngb_pending_count = len(action_history_list)
+
+        # If no application_type is provided, query both collections
+        else:
+            # Query ERP notifications
+            query_filter_erp = {"erp_notify_from_id": username}
+            if notification_status:
+                query_filter_erp["erp_notify_status"] = notification_status
+            action_history_records_erp = mongo.db.mpwz_notifylist_erp.find(query_filter_erp, {"_id": 0})
+            erp_pending_count = len(list(action_history_records_erp))
+
+            # Query NGB notifications
+            query_filter_ngb = {"ngb_notify_from_id": username}
+            if notification_status:
+                query_filter_ngb["ngb_notify_status"] = notification_status
+            action_history_records_ngb = mongo.db.mpwz_notifylist_ngb.find(query_filter_ngb, {"_id": 0})
+            ngb_pending_count = len(list(action_history_records_ngb))
+
+        # Calculate total pending count
+        total_pending_count = erp_pending_count + ngb_pending_count
+
+        # Prepare response data
+        response_data['total_pending_count'] = total_pending_count
+
+        # Add notification status for each application
+        if erp_pending_count > 0:
+            response_data['notification_status'].append({
+                "pending_count": erp_pending_count,
+                "application_name": "erp"
+            })
+        if ngb_pending_count > 0:
+            response_data['notification_status'].append({
+                "pending_count": ngb_pending_count,
+                "application_name": "ngb"
+            })
+
+    except Exception as e:
+        return jsonify({"msg": "Error retrieving notifications.", "error": str(e)}), 500
+
+    return jsonify(response_data), 200
+
+@app.route('/pending-notify-list', methods=['GET'])
 @jwt_required()
-def pending_notification_erp():
+def pending_notification_list():
     current_user = get_jwt_identity()
     username = current_user['username']
-    action_history_records = mongo.db.mpwz_notifylist_erp.find(
-          {"erp_notify_to_id": username},  
-          {"_id": 0}
-    )
-    # Convert cursor to a list
-    action_history_list = list(action_history_records)
+    application_type = request.args.get('application_type')
+    notification_status = request.args.get('notification_status')
 
-    if action_history_list:
-        return jsonify(action_history_list), 200
-    else:
-        return jsonify({"msg": "No action history found."}), 404
+    valid_application_types = ['erp', 'ngb']
+    response_data = {
+        'username': username,
+        'notifications': []
+    }
+
+    try:
+        # Initialize the lists to hold notifications
+        erp_notifications = []
+        ngb_notifications = []
+
+        # If application_type is provided and valid
+        if application_type:
+            if application_type not in valid_application_types:
+                return jsonify({"msg": "Invalid application type specified."}), 400
+
+            # Build the query filter based on the application type
+            if application_type == 'erp':
+                query_filter = {"erp_notify_to_id": username}
+                if notification_status:
+                    query_filter["erp_notify_status"] = notification_status
+                action_history_records = mongo.db.mpwz_notifylist_erp.find(query_filter, {"_id": 0})
+                erp_notifications = list(action_history_records)
+
+            elif application_type == 'ngb':
+                query_filter = {"ngb_notify_to_id": username}
+                if notification_status:
+                    query_filter["ngb_notify_status"] = notification_status
+                action_history_records = mongo.db.mpwz_notifylist_ngb.find(query_filter, {"_id": 0})
+                ngb_notifications = list(action_history_records)
+
+        # If no application_type is provided, query both collections
+        else:
+            # Query ERP notifications
+            query_filter_erp = {"erp_notify_to_id": username}
+            if notification_status:
+                query_filter_erp["erp_notify_status"] = notification_status
+            action_history_records_erp = mongo.db.mpwz_notifylist_erp.find(query_filter_erp, {"_id": 0})
+            erp_notifications = list(action_history_records_erp)
+
+            # Query NGB notifications
+            query_filter_ngb = {"ngb_notify_to_id": username}
+            if notification_status:
+                query_filter_ngb["ngb_notify_status"] = notification_status
+            action_history_records_ngb = mongo.db.mpwz_notifylist_ngb.find(query_filter_ngb, {"_id": 0})
+            ngb_notifications = list(action_history_records_ngb)
+
+        # Add notifications to response
+        if erp_notifications:
+            response_data['notifications'].append({
+                "application_name": "erp",
+                "notification": erp_notifications
+            })
+        if ngb_notifications:
+            response_data['notifications'].append({
+                "application_name": "ngb",
+                "notification": ngb_notifications
+            })
+
+    except Exception as e:
+        return jsonify({"msg": "Error retrieving notifications.", "error": str(e)}), 500
+
+    return jsonify(response_data), 200
+
+@app.route('/pending-notify-count', methods=['GET'])
+@jwt_required()
+def pending_notification_count():
+    current_user = get_jwt_identity()
+    username = current_user['username']
+    application_type = request.args.get('application_type')
+    notification_status = request.args.get('notification_status')
+
+    valid_application_types = ['erp', 'ngb']
+    total_pending_count = 0
+    response_data = {
+        'username': username,
+        'total_pending_count': 0,
+        'notification_status': []
+    }
+
+    try:
+        # Initialize pending counts for each application type
+        erp_pending_count = 0
+        ngb_pending_count = 0
+
+        # If application_type is provided and valid
+        if application_type:
+            if application_type not in valid_application_types:
+                return jsonify({"msg": "Invalid application type specified."}), 400
+
+            # Build the query filter based on the application type
+            if application_type == 'erp':
+                query_filter = {"erp_notify_to_id": username}
+                if notification_status:
+                    query_filter["erp_notify_status"] = notification_status
+                action_history_records = mongo.db.mpwz_notifylist_erp.find(query_filter, {"_id": 0})
+                action_history_list = list(action_history_records)
+                erp_pending_count = len(action_history_list)
+
+            elif application_type == 'ngb':
+                query_filter = {"ngb_notify_to_id": username}
+                if notification_status:
+                    query_filter["ngb_notify_status"] = notification_status
+                action_history_records = mongo.db.mpwz_notifylist_ngb.find(query_filter, {"_id": 0})
+                action_history_list = list(action_history_records)
+                ngb_pending_count = len(action_history_list)
+
+        # If no application_type is provided, query both collections
+        else:
+            # Query ERP notifications
+            query_filter_erp = {"erp_notify_to_id": username}
+            if notification_status:
+                query_filter_erp["erp_notify_status"] = notification_status
+            action_history_records_erp = mongo.db.mpwz_notifylist_erp.find(query_filter_erp, {"_id": 0})
+            erp_pending_count = len(list(action_history_records_erp))
+
+            # Query NGB notifications
+            query_filter_ngb = {"ngb_notify_to_id": username}
+            if notification_status:
+                query_filter_ngb["ngb_notify_status"] = notification_status
+            action_history_records_ngb = mongo.db.mpwz_notifylist_ngb.find(query_filter_ngb, {"_id": 0})
+            ngb_pending_count = len(list(action_history_records_ngb))
+
+        # Calculate total pending count
+        total_pending_count = erp_pending_count + ngb_pending_count
+
+        # Prepare response data
+        response_data['total_pending_count'] = total_pending_count
+
+        # Add notification status for each application
+        if erp_pending_count > 0:
+            response_data['notification_status'].append({
+                "pending_count": erp_pending_count,
+                "application_name": "erp"
+            })
+        if ngb_pending_count > 0:
+            response_data['notification_status'].append({
+                "pending_count": ngb_pending_count,
+                "application_name": "ngb"
+            })
+
+    except Exception as e:
+        return jsonify({"msg": "Error retrieving notifications.", "error": str(e)}), 500
+
+    return jsonify(response_data), 200
     
-@app.route('/pending-notify-ngb', methods=['GET'])
-@jwt_required()
-def pending_notification_ngb():
-    current_user = get_jwt_identity()
-    username = current_user['username']
-    print(username)
-    action_history_records = mongo.db.mpwz_notifylist_ngb.find(
-          {"ngb_notify_to_id": username},  
-          {"_id": 0}
-    )
-    # Convert cursor to a list
-    action_history_list = list(action_history_records)
-
-    if action_history_list:
-        return jsonify(action_history_list), 200
-    else:
-        return jsonify({"msg": "No action history found."}), 404  
-    
-@app.route('/update-ngb-notify-status-inhouse', methods=['POST'])
+@app.route('/update-notify-ngb', methods=['POST'])
 @jwt_required()
 def update_ngb_notify_status():
     current_user = get_jwt_identity()
@@ -319,7 +511,7 @@ def update_ngb_notify_status():
         else:
             return jsonify({"msg": "Failed to Send Notification Status to NGB Server."}), 500   
 
-@app.route('/update-erp-notify-status-inhouse', methods=['POST'])
+@app.route('/update-notify-erp', methods=['POST'])
 @jwt_required()
 def update_erp_notify_status():
     current_user = get_jwt_identity()
@@ -389,5 +581,5 @@ def get_notification_status():
 
 
 if __name__ == '__main__':
-    trigger.start_watching()  # Start watching
+    # trigger.start_watching()  
     app.run(debug=False)
