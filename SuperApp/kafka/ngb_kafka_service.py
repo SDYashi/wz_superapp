@@ -10,7 +10,7 @@ class KafkaConsumerService:
         self.running = False
 
     def consume_messages(self):
-        """ Poll Kafka and process messages """
+
         try:
             self.consumer.subscribe([self.topic])
             while self.running:
@@ -29,17 +29,14 @@ class KafkaConsumerService:
         finally:
             self.consumer.close()
 
-    def process_message(self, message):
-        """ Process the received Kafka message """
+    def process_message(self, message):     
         logging.info(f"Received message: {message}")
 
-    def start(self):
-        """ Start consuming messages in a background thread """
+    def start(self):      
         self.running = True
         consumer_thread = threading.Thread(target=self.consume_messages)
-        consumer_thread.daemon = True  # Daemonize the thread so it exits with the main app
+        consumer_thread.daemon = True 
         consumer_thread.start()
 
-    def stop(self):
-        """ Gracefully stop the Kafka consumer """
+    def stop(self):       
         self.running = False

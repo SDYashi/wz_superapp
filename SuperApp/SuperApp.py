@@ -7,10 +7,13 @@ import bcrypt
 from SuperApp.kafka import init_kafka_app
 from SuperApp.shared_api.erp_api_services import ERP_APIServices
 from SuperApp.shared_api.ngb_api_services import NGB_APIServices
-
+from myservices.sequence_generator import SequenceGenerator
 
 
 app = Flask(__name__)
+
+seq_gen = SequenceGenerator("mongodb://localhost:27017/admin")
+action_history_erp_seq = seq_gen.get_next_sequence('action_history_erp')
 
 # Register Kafka Blueprint with the app
 init_kafka_app(app)

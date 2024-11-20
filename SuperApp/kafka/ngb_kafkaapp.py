@@ -7,23 +7,24 @@ import logging
 kafka_blueprint = Blueprint('kafka', __name__)
 
 # Kafka configurations (adjust according to your setup)
-KAFKA_CONFIG = {
-    'bootstrap.servers': 'your-kafka-server', 
-    'group.id': 'flask-consumer-group',  
-    'auto.offset.reset': 'earliest' 
+kafka_config = {
+    'bootstrap.servers': 'localhost:9092',
+    'group.id': 'my_group',
+    'auto.offset.reset': 'earliest',
 }
 
-TOPIC = 'your-topic'  
+topic = 'my_topic'
+app_name = 'MyKafkaConsumerApp'
 
-# Initialize Kafka Consumer Service
-kafka_consumer_service = KafkaConsumerService(KAFKA_CONFIG, TOPIC)
+consumer_service = KafkaConsumerService(kafka_config, topic, app_name)
+consumer_service.start()
 
 # Route to start Kafka consumer
 @kafka_blueprint.before_app_first_request
 def start_kafka_consumer():
     """ Start Kafka consumer when the first request is received. """
     logging.info("Starting Kafka consumer...")
-    kafka_consumer_service.start()
+    consumer_service.start()
 
 # Route to stop Kafka consumer 
 @kafka_blueprint.route('/stop', methods=['POST'])
@@ -31,7 +32,7 @@ def start_kafka_consumer():
 def stop_kafka():
     """ Gracefully stop the Kafka consumer. """
     logging.info("Stopping Kafka consumer...")
-    kafka_consumer_service.stop()
+    consumer_service.stop()
     return jsonify({"msg": "Kafka consumer stopped."}), 200
 
 # A simple status route to check if the Kafka consumer is active

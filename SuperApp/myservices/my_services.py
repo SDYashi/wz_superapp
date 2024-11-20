@@ -1,7 +1,7 @@
 import datetime
 
 
-class MY_APIServices:
+class my_services:
     def __init__(self):
         self.api_call_history = []
 
