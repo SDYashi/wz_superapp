@@ -18,7 +18,7 @@ class my_services:
         }
         self.collection.insert_one(log_entry)
         self.api_call_history.append(log_entry)
-        print("Most Recent API Call:",log_entry)
+        print("API Calling:",log_entry,"\n\n")
 
     def get_current_datetime(self):
         now =  datetime.datetime.now().isoformat()

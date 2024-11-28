@@ -1,5 +1,5 @@
 # Ignore virtual environments
 mpwz_admin/
-*.mpwz_admin
+*.SuperApp
 __pycache__/
 *.pyc
