@@ -1,0 +1,7 @@
+# check python installation type python
+pip install flask
+pip install wfastcgi
+ waitress-serve --host 0.0.0.0 --port 8009 SuperApp:app
+
+ netstat -aon | findstr :80 #search port using appliation list
+ taskkill /F /PID 7688 # kill process of window
