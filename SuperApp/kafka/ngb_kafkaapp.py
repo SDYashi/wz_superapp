@@ -14,8 +14,7 @@ kafka_config = {
 }
 
 topic = 'my_topic'
-app_name = 'MyKafkaConsumerApp'
-
+app_name = 'SuperApp'
 consumer_service = KafkaConsumerService(kafka_config, topic)
 consumer_service.start()
 

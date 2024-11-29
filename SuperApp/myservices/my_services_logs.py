@@ -9,7 +9,6 @@ class my_services:
         self.db = self.client['admin'] 
         self.collection = self.db['mpwz_users_logs']  
         self.api_call_history = []  
-
     def log_api_call(self, request_data, response_data):
         log_entry = {
             "timestamp": datetime.datetime.now().isoformat(),
@@ -18,7 +17,7 @@ class my_services:
         }
         self.collection.insert_one(log_entry)
         self.api_call_history.append(log_entry)
-        print("API Calling:",log_entry,"\n\n")
+        print("API Calling:",log_entry,"\n")
 
     def get_current_datetime(self):
         now =  datetime.datetime.now().isoformat()

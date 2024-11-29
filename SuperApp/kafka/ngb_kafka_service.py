@@ -10,7 +10,6 @@ class KafkaConsumerService:
         self.running = False
 
     def consume_messages(self):
-
         try:
             self.consumer.subscribe([self.topic])
             while self.running:
@@ -25,12 +24,12 @@ class KafkaConsumerService:
                 else:
                     self.process_message(msg.value().decode('utf-8'))
         except Exception as e:
-            logging.error(f"Error consuming Kafka messages: {e}")
+           print(f"Error consuming Kafka messages: {e}")
         finally:
             self.consumer.close()
 
     def process_message(self, message):     
-        logging.info(f"Received message: {message}")
+        print(f"Received message: {message}")
 
     def start(self):      
         self.running = True

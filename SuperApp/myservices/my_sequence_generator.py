@@ -16,8 +16,7 @@ class SequenceGenerator:
             "mpwz_user_action_history",
             "mpwz_users",
             "mpwz_users_credentials",
-            "mpwz_users_logs",
-            "sequences"
+            "mpwz_users_logs"
         ]
       
         for collection in self.collections:

@@ -14,38 +14,54 @@ from myservices.my_sequence_generator import SequenceGenerator
 from myservices.my_services_logs import my_services
 
 app = Flask(__name__)
+
 # intialize all class's for use app 
 seq_gen = SequenceGenerator("admin")
 log_entry_event = my_services()
+
 # cross origin allow for applications
 CORS(app, resources={r"/*": {"origins": "*"}})
+
 # mongo database's configuration informations
 app.config["MONGO_URI"] = "mongodb://localhost:27017/admin"
 mongo = PyMongo(app)
+
 # jwt token configuration
 app.config['JWT_SECRET_KEY'] ='ashfkjdshfkjdshgflsdkijghsdjlkgdhi' # secrets.token_hex()  
-app.config['JWT_ACCESS_TOKEN_EXPIRES']=datetime.timedelta(days=5)
+app.config['JWT_ACCESS_TOKEN_EXPIRES']=datetime.timedelta(days=25)
 jwt = JWTManager(app)
 
+# this api is only for admin single time purpose where application pushed on server
+# @app.route('/set_common_password', methods=['PUT'])
+# def set_common_password():
+#     # Get the common password
+#     common_password = "123456"
+#     common_status = "PENDING"
 
-@app.route('/set_common_password', methods=['PUT'])
-def set_common_password():
-    # Get the common password
-    common_password = "123456"
-    # Hash the common password
-    hashed_password = bcrypt.hashpw(common_password.encode('utf-8'), bcrypt.gensalt())
+#     # Hash the common password
+#     # hashed_password = bcrypt.hashpw(common_password.encode('utf-8'), bcrypt.gensalt())
+#     # Update the password for all users in the collection
+#     # result = mongo.db.mpwz_users.update_many(
+#     #     {}, 
+#     #     {"$set": {"password": hashed_password}}
+#     # )
 
-    # Update the password for all users in the collection
-    result = mongo.db.mpwz_users.update_many(
-        {},  # Empty filter to match all documents
-        {"$set": {"password": hashed_password}}
-    )
-
-    # Check how many users were modified
-    if result.modified_count > 0:
-        return jsonify({"msg": f"Password set to '123456' for {result.modified_count} users."}), 200
-    else:
-        return jsonify({"msg": "No users found or password unchanged."}), 404
+#     # Check how many users were modified
+#     # if result.modified_count > 0:
+#     #     return jsonify({"msg": f"Password set to '123456' for {result.modified_count} users."}), 200
+#     # else:
+#     #     return jsonify({"msg": "No users found or password unchanged."}), 404
+    
+#     # Update the password for all users in the collection
+#     result1 = mongo.db.mpwz_notifylist.update_many(
+#         {}, 
+#         {"$set": {"notify_status": common_status}}
+#     )
+    
+#     if result1.modified_count > 0:
+#         return jsonify({"msg": f"notify_status set to {common_status} for {result1.modified_count} users."}), 200
+#     else:
+#         return jsonify({"msg": "No Change  in Notification stats."}), 404
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -61,8 +77,7 @@ def login():
 
             # Check if the password is correct using bcrypt
             if bcrypt.checkpw(password.encode('utf-8'), stored_hashed_password):
-                access_token = create_access_token(identity={"username": username})
-                
+                access_token = create_access_token(identity={"username": username})                
                 request_data = username
                 response_data = {"status": "success", "message": "Logged in successfully", "BearerToken": access_token}
                 log_entry_event.log_api_call(request_data, response_data)
@@ -75,7 +90,6 @@ def login():
 
     except Exception as error:
         return jsonify({"msg": "An error occurred while processing your request", "error": str(error)}), 500
-
 
 @app.route('/change_password', methods=['PUT'])
 @jwt_required()
@@ -106,8 +120,6 @@ def change_password():
         return jsonify({"msg": "Password changed successfully!"}), 200
     except Exception as error:
         return jsonify({"msg": f"An error occurred while changing the password. Please try again later {str(error)}."}), 500
- 
-import base64
 
 @app.route('/userprofile', methods=['GET'])
 @jwt_required()
@@ -127,6 +139,8 @@ def view_profile():
 
             request_data['current_api'] = request.full_path
             request_data['client_ip'] = request.remote_addr
+            user['action_by']=username
+            user['action_at']=datetime.datetime.now().isoformat()
 
             response_data = {
                 "msg": "User Profile loaded successfully",
@@ -143,7 +157,6 @@ def view_profile():
 
     except Exception as e:
         return jsonify({"msg": f"An error occurred while retrieving the user profile. Please try again later. {str(e)}"}), 500
-
 
 @app.route('/notify-status', methods=['GET', 'POST'])
 @jwt_required()
@@ -433,11 +446,12 @@ def my_request_notification_list():
         # Build the query for filters
         query = {
             'app_source': application_type,
-            'notify_from_id': username
+            'notify_from_id': username,
+            'notify_status':notification_status
         }
 
-        if notification_status:
-            query['notify_status'] = notification_status
+        # if notification_status:
+        #     query['notify_status'] = notification_status
 
         # Fetching notifications by query
         notifications = mongo.db.mpwz_notifylist.find(query)
@@ -549,34 +563,38 @@ def pending_notification_list():
         if not app_exists:
             return jsonify({"msg": "application type does not exist."}), 400  
 
-        # Initialize response data
-        response_data = {
-            'username': username,
-            'notifications': []
-        }
-
-        # Build the query for filters
+        # response_data = {
+        #     'username': username,
+        #     'notifications': []
+        # }
+        response_data=[]
+        
         query = {
             'app_source': application_type,  
-            'notify_to_id': username
+            'notify_to_id': username,
+            'notify_status':notification_status
         }
 
-        if notification_status:
-            query['notify_status'] = notification_status
+        # if notification_status:
+        #     query['notify_status'] = notification_status
 
-        # Fetch notifications based on query
+        # Fetch data using query
         notifications = mongo.db.mpwz_notifylist.find(query)
+        unique_button_names = mongo.db.mpwz_buttons.distinct('button_name')
 
-        # Process notifications
         for notification in notifications:
             notification_copy = notification.copy()  
-            notification_copy.pop('_id', None)  
-            response_data['notifications'].append(notification_copy) 
+            notification_copy.pop('_id', None) 
+            notification_copy['buttons'] = unique_button_names  
+            response_data.append(notification_copy) 
+            # response_data['notifications'].append(notification_copy) 
 
         # Log the response statuses
-        if response_data['notifications']:
+        # if response_data['notifications']:
+        if response_data:
             response_statuses = []
-            for notification in response_data['notifications']:
+            # for notification in response_data['notifications']:
+            for notification in response_data:
                 status_response1 = {key: value for key, value in notification.items()}  
                 status_response1['action_by'] = username
                 status_response1['action_at'] = datetime.datetime.now().isoformat()
@@ -594,7 +612,7 @@ def pending_notification_list():
 
     except Exception as e:
         return jsonify({"msg": "An error occurred while processing your request", "error": str(e)}), 500
-    
+     
 @app.route('/update-notify-inhouse-app', methods=['POST'])
 @jwt_required()
 def update_notify_status_inhouse_app():
@@ -604,14 +622,11 @@ def update_notify_status_inhouse_app():
         remote_response = ""
         username = current_user['username']
         app_source = request.args.get('app_source')
-
         app_exists = mongo.db.mpwz_integrated_app.find_one({"app_name": app_source})
         if not app_exists:
             return jsonify({"msg": "Requesting application is not integrated with our server."}), 400
+        required_fields = ["mpwz_id", "app_source", "app_source_appid", "notify_status", "notify_refsys_id", "notify_to_id", "notify_from_id","notify_type"]
 
-        required_fields = ["mpwz_id", "app_source", "app_source_appid", "notify_status", "notify_refsys_id", "notify_to_id", "notify_from_id", "notify_title"]
-
-        # Check if all required fields are provided
         for field in required_fields:
             if field not in data:
                 return jsonify({"msg": f"{field} is required"}), 400
@@ -622,16 +637,15 @@ def update_notify_status_inhouse_app():
 
         if app_source == 'ngb':
             ngb_user_details = mongo.db.mpwz_notifylist.find_one({
-                "app_name": app_source,
+                "app_source": app_source,
                 "mpwz_id": data["mpwz_id"],
-                "notify_refsys_id": data['notify_refsys_id'],
-                "notify_title": data['notify_title']
+                "notify_refsys_id": data['notify_refsys_id']
             })
 
             if ngb_user_details is None:
                 return jsonify({"msg": "Notification details not found in databaase"}), 404
 
-            if ngb_user_details.get("request_type") == "CC4_Request":
+            if ngb_user_details.get("notify_type") == "CC4":
                 shared_api_data = {
                     "id": ngb_user_details["notify_refsys_id"],
                     "locationCode": ngb_user_details["locationCode"],
@@ -645,7 +659,7 @@ def update_notify_status_inhouse_app():
                 }
                 remote_response = ngb_postapi_services.notify_ngb_toupdate_cc4status(shared_api_data)
 
-            elif ngb_user_details.get("request_type") == "CCB_Request":
+            elif ngb_user_details.get("notify_type") == "CCB":
                 shared_api_data = {
                     "postingDate": ngb_user_details["postingDate"],
                     "amount": ngb_user_details["amount"],
@@ -655,7 +669,6 @@ def update_notify_status_inhouse_app():
                     "consumerNo": ngb_user_details["consumerNo"],
                 }
                 remote_response = ngb_postapi_services.notify_ngb_toupdate_ccbstatus(shared_api_data)
-
             else:
                 return jsonify({"msg": "Notification Type is not allowed to push data to NGB."}), 400
 
@@ -677,8 +690,7 @@ def update_notify_status_inhouse_app():
             # Find the document and update it
             result = mongo.db.mpwz_notifylist.update_one(
                 {"mpwz_id": data["mpwz_id"], "notify_to_id": data["notify_to_id"]},
-                {"$set": update_query}
-            )
+                {"$set": update_query}            )
 
             if result.modified_count > 0:
                 response_statuses = []
@@ -689,88 +701,216 @@ def update_notify_status_inhouse_app():
                     response_statuses.append(status_response1)
 
                 # Make logs entry in table
-                request_data = current_user
+                request_data = username
                 request_data['current_api'] = request.full_path
                 request_data['client_ip'] = request.remote_addr
-                response_data = {"msg": "Notification updated in in-house server successfully", "Bear rToken": response_statuses}
+                response_data = {"msg": "Notification updated in in-house server successfully", "Bear Token": response_statuses}
                 log_entry_event.log_api_call(request_data, response_data)
                 return jsonify({"msg": f"Notification status updated successfully. {result.modified_count}"}), 200
             else:
                 return jsonify({"msg": f"Something went wrong while updating Notification in own servers: {app_source}"}), 400
         else:
             return jsonify({"msg": f"Something went wrong while updating Notification into remote servers: {app_source}"}), 200
-
     except Exception as e:
         return jsonify({"msg": f"Something went wrong while processing request in primary stage {str(e)}"}), 500
      
-## Extenal API for Remote Servers ##
-@app.route('/shared-remotecall/api/post-notify-info-ext', methods=['POST'])
+## Extenal API for Get Data from Remote Servers ##
+@app.route('/shared-call/api/ngb/post-notify-list', methods=['POST'])
 @jwt_required()
-def create_notification_from_erp():
+def create_notification_from_ngb():
     current_user = get_jwt_identity()
-    data = request.get_json()   
-    username = current_user['username'] 
-    application_type = data['app_source']
+    data = request.get_json() 
+    username = current_user['username']     
+    application_type = request.args.get('app_source')    
+    app_request_type = request.args.get('app_request_type')
+
+    print(f"requesting data for {app_request_type} and request comming from {application_type}")   
 
     app_exists = mongo.db.mpwz_integrated_app.find_one({"app_name": application_type})
     if not app_exists:
-        return jsonify({"msg": "requesting application is not integrated with our server."}), 400  
-    
-    # ["mpwz_id", "app_source", "app_source_appid", "notify_status", "notify_refsys_id", "notify_to_id", "notify_from_id", "notify_to_name", "notify_from_name"]
-   
-   # Validate required fields
-    required_fields_map = {
-        "erp": ["mpwz_id"],
-        "ngb": {
+        return jsonify({"msg": "requesting application is not integrated with our server."}), 400 
+    else: 
+
+        required_fields_map = {
             "CC4": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
             "CCB": ["id", "postingDate", "amount", "code", "ccbRegisterNo", "remark", "consumerNo"]
         }
-    }
-    required_fields = []
-
-    if application_type in required_fields_map:
-        if application_type == "ngb":      
-            subcategory = "CC4"  
-            required_fields = required_fields_map["ngb"].get(subcategory, [])
+        # Check if the data_type exists in the required fields map
+        if app_request_type in required_fields_map:
+            required_fields = required_fields_map[app_request_type]
+            for field in required_fields:
+                if field not in data:
+                    return jsonify({"msg": f"{field} is required for {app_request_type}."}), 400
         else:
-            required_fields = required_fields_map[application_type]
+            return jsonify({"msg": f"Invalid data type: {app_request_type}."}), 400  
+        
+        existing_record = mongo.db.mpwz_notifylist.find_one({"notify_refsys_id": data["notify_refsys_id"]})
+        if existing_record:      
+            return jsonify({"msg": "Records with notify_refsys_id already existed in database."}), 400
+        else:  
+            # Generate sequence number for mpwz_id
+            mpwz_id_sequenceno = seq_gen.get_next_sequence('mpwz_notifylist')
+            if mpwz_id_sequenceno:  
+                if app_request_type=="CC4":
+                    data['mpwz_id'] = mpwz_id_sequenceno
+                    data['app_source'] = "ngb"
+                    data['app_source_appid'] = data['app_source_appid']
+                    data['notify_status'] = data['notify_status']
+                    data['notify_refsys_id'] = data['notify_refsys_id']
+                    data['notify_to_id'] = data['notify_to_id']
+                    data['notify_from_id'] = data['notify_from_id']
+                    data['notify_to_name'] = data['notify_to_name']
+                    data['notify_from_name'] = data['notify_from_name']
+                else:
+                    data['mpwz_id'] = mpwz_id_sequenceno
+                    data['app_source'] = "ngb"
+                    data['app_source_appid'] = data['app_source_appid']
+                    data['notify_status'] = data['notify_status']
+                    data['notify_refsys_id'] = data['notify_refsys_id']
+                    data['notify_to_id'] = data['notify_to_id']
+                    data['notify_from_id'] = data['notify_from_id']
+                    data['notify_to_name'] = data['notify_to_name']
+                    data['notify_from_name'] = data['notify_from_name']
+            try:
+                result = mongo.db.mpwz_notifylist.insert_one(data)
+                if result:
+                    response_status = {
+                        "mpwz_id": data["mpwz_id"],
+                        "action_by": username,
+                        "action_at": datetime.datetime.now().isoformat()
+                    }
+                    request_data = current_user
+                    response_data = {
+                        "status": "success", 
+                        "msg": f"Data inserted successfully from source {application_type} id:--{str(result.inserted_id)}",
+                        "BearerToken": response_status
+                    }
+                    # Log adding logs i9nto db
+                    log_entry_event.log_api_call(request_data, response_data)
+                    return jsonify({"msg": "Data inserted successfully", "id": str(result.inserted_id)}), 200
+                else:
+                    seq_gen.reset_sequence('mpwz_notifylist_erp')
+                    return jsonify({"msg": "Failed to insert data from remote server logs"}), 400 
+                
+            except Exception as errors:
+                seq_gen.reset_sequence('mpwz_notifylist_erp')
+                return jsonify({"msg": f"Failed to insert data: {str(errors)}"}), 500
 
-    # checking required fields in the data or not
-    for field in required_fields:
-        if field not in data:
-            return jsonify({"msg": f"{field} is required for migrations data."}), 400
+@app.route('/shared-call/api/erp/post-notify-list', methods=['POST'])
+@jwt_required()
+def create_notification_from_erp():
+    current_user = get_jwt_identity()
+    data = request.get_json() 
+    username = current_user['username']     
+    application_type = request.args.get('app_source')    
+    app_request_type = request.args.get('app_request_type') 
+    
+    print(f"requesting data for {app_request_type} and request comming from {application_type}")   
 
-    # Checking if notify_refsys_id already exists in the collection
-    existing_record = mongo.db.mpwz_notifylist.find_one({"notify_refsys_id": data["notify_refsys_id"]})
-    if existing_record:      
-        return jsonify({"msg": "Record with this notify_refsys_id already exists."}), 400
-    else:  
-        # Generate sequence number for mpwz_id
-        mpwz_id_sequenceno = seq_gen.get_next_sequence('mpwz_notifylist_erp')
-        if mpwz_id_sequenceno:
-            data['mpwz_id'] = mpwz_id_sequenceno
-        try:
-            result = mongo.db.mpwz_notifylist.insert_one(data)
-            if result:
-                # Create a response to return
-                response_status = {
-                    "mpwz_id": data["mpwz_id"],
-                    "action_by": username,
-                    "action_at": datetime.datetime.now().isoformat()
-                }
-                request_data = current_user
-                response_data = {
-                    "status": "success", 
-                    "msg": f"Data inserted successfully from source {application_type} id:--{str(result.inserted_id)}",
-                    "BearerToken": response_status
-                }
-                # Log the API call
-                log_entry_event.log_api_call(request_data, response_data)
-                return jsonify({"msg": "Data inserted successfully", "id": str(result.inserted_id)}), 200
-            else:
-                return jsonify({"msg": "Failed to insert data from remote server logs"}), 400 
-        except Exception as errors:
-            return jsonify({"msg": f"Failed to insert data: {str(errors)}"}), 500
+    app_exists = mongo.db.mpwz_integrated_app.find_one({"app_name": application_type})
+    if not app_exists:
+        return jsonify({"msg": "requesting application is not integrated with our server."}), 400 
+    else: 
+        required_fields_map = {
+            "LEAVE": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
+            "PROJECT": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
+            "TADA": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
+            "BILL": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"]
+        }
+        # Check if the data_type exists in the required fields map
+        if app_request_type in required_fields_map:
+            required_fields = required_fields_map[app_request_type]
+            for field in required_fields:
+                if field not in data:
+                    return jsonify({"msg": f"{field} is required for {app_request_type}."}), 400
+        else:
+            return jsonify({"msg": f"Invalid data type: {app_request_type}."}), 400  
+        
+        existing_record = mongo.db.mpwz_notifylist.find_one({"notify_refsys_id": data["notify_refsys_id"]})
+        if existing_record:      
+            return jsonify({"msg": "Records with notify_refsys_id already existed in database."}), 400
+        else:  
+            # Generate sequence number for mpwz_id
+            mpwz_id_sequenceno = seq_gen.get_next_sequence('mpwz_notifylist')
+            if mpwz_id_sequenceno:
+                    data['mpwz_id'] = mpwz_id_sequenceno
+                    data['app_source'] = "ngb"
+                    data['app_source_appid'] = data['app_source_appid']
+                    data['notify_status'] = data['notify_status']
+                    data['notify_refsys_id'] = data['notify_refsys_id']
+                    data['notify_to_id'] = data['notify_to_id']
+                    data['notify_from_id'] = data['notify_from_id']
+                    data['notify_to_name'] = data['notify_to_name']
+                    data['notify_from_name'] = data['notify_from_name']
+                    data['app_request_type'] = data['app_request_type']
+            try:
+                result = mongo.db.mpwz_notifylist.insert_one(data)
+                if result:
+                    response_status = {
+                        "mpwz_id": data["mpwz_id"],
+                        "action_by": username,
+                        "action_at": datetime.datetime.now().isoformat()
+                    }
+                    request_data = current_user
+                    response_data = {
+                        "status": "success", 
+                        "msg": f"Data inserted successfully from source {application_type} id:--{str(result.inserted_id)}",
+                        "BearerToken": response_status
+                    }
+                    # Log adding logs i9nto db
+                    log_entry_event.log_api_call(request_data, response_data)
+                    return jsonify({"msg": "Data inserted successfully", "id": str(result.inserted_id)}), 200
+                else:
+                    seq_gen.reset_sequence('mpwz_notifylist')
+                    return jsonify({"msg": "Failed to insert data from remote server logs"}), 400 
+                
+            except Exception as errors:
+                seq_gen.reset_sequence('mpwz_notifylist')
+                return jsonify({"msg": f"Failed to insert data: {str(errors)}"}), 500
+
+# this api is only for testng purpose
+@app.route('/shared-call/api/ngb/post-notify-list-test', methods=['POST'])
+def create_notification_testing():
+    data = request.get_json() 
+    try:
+        data_type = data['code']
+        if data_type:        
+            request_type ="CCB"
+        else:
+            request_type="CC4"
+
+        if request_type=="CC4":
+            myseq_mpwz_id = seq_gen.get_next_sequence('mpwz_notify_status') 
+            data['mpwz_id'] = myseq_mpwz_id
+            data['app_source'] = "ngb"
+            data['app_source_appid'] = data['approvalStatus']
+            data['notify_status'] = data['approvalStatus']
+            data['notify_refsys_id'] = data['approvalStatus']
+            data['notify_to_id'] = data['approvalStatus']
+            data['notify_from_id'] = data['approvalStatus']
+            data['notify_to_name'] = data['approvalStatus']
+            data['notify_from_name'] = data['approvalStatus']
+        else:
+            myseq_mpwz_id = seq_gen.get_next_sequence('mpwz_notify_status') 
+            data['mpwz_id'] = myseq_mpwz_id
+            data['app_source'] = "ngb"
+            data['app_source_appid'] = data['approvalStatus']
+            data['notify_status'] = data['approvalStatus']
+            data['notify_refsys_id'] = data['approvalStatus']
+            data['notify_to_id'] = data['approvalStatus']
+            data['notify_from_id'] = data['approvalStatus']
+            data['notify_to_name'] = data['approvalStatus']
+            data['notify_from_name'] = data['approvalStatus']
+
+    except Exception as e:
+           return jsonify({"error new": str(e)}), 500
+    
+    # Insert the data into MongoDB
+    try:
+        mongo.db.mpwz_notifylist.insert_one(data)
+        return jsonify({"message": "Data inserted successfully"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     # app.run(debug=False)

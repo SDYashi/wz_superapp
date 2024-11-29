@@ -1,2 +1,5 @@
 mongo_db_backup/mpwz_offices.csv
 mongo_db_backup/mpwz_users.csv
+mongo_db_backup/mpwz_buttons.csv
+mongo_db_backup/mpwz_notify_status.csv
+mongo_db_backup/mpwz_notifylist.csv
