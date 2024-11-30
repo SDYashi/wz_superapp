@@ -1,3 +1,4 @@
+import base64
 import secrets
 import datetime
 import json
@@ -10,14 +11,14 @@ import bcrypt
 from shared_api import ngb_postapi_services
 from shared_api.erp_postapi_services import erp_apiservices
 from shared_api.ngb_postapi_services import ngb_apiservices
-from myservices.my_sequence_generator import SequenceGenerator
-from myservices.my_services_logs import my_services
+from myservices.myserv_getmpwz_id import myserv_getmpwz_id
+from myservices.myserv_updateuserlogs import myserv_updateuserlogs
 
 app = Flask(__name__)
 
 # intialize all class's for use app 
-seq_gen = SequenceGenerator("admin")
-log_entry_event = my_services()
+seq_gen = myserv_getmpwz_id()
+log_entry_event = myserv_updateuserlogs()
 
 # cross origin allow for applications
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -32,36 +33,36 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES']=datetime.timedelta(days=25)
 jwt = JWTManager(app)
 
 # this api is only for admin single time purpose where application pushed on server
-# @app.route('/set_common_password', methods=['PUT'])
-# def set_common_password():
-#     # Get the common password
-#     common_password = "123456"
-#     common_status = "PENDING"
+@app.route('/set_common_password', methods=['PUT'])
+def set_common_password():
+    # Get the common password
+    common_password = "123456"
+    common_status = ""
 
-#     # Hash the common password
-#     # hashed_password = bcrypt.hashpw(common_password.encode('utf-8'), bcrypt.gensalt())
-#     # Update the password for all users in the collection
-#     # result = mongo.db.mpwz_users.update_many(
-#     #     {}, 
-#     #     {"$set": {"password": hashed_password}}
-#     # )
+    # Hash the common password
+    hashed_password = bcrypt.hashpw(common_password.encode('utf-8'), bcrypt.gensalt())
+    # Update the password for all users in the collection
+    result = mongo.db.mpwz_users.update_many(
+        {}, 
+        {"$set": {"password": hashed_password}}
+    )
 
-#     # Check how many users were modified
-#     # if result.modified_count > 0:
-#     #     return jsonify({"msg": f"Password set to '123456' for {result.modified_count} users."}), 200
-#     # else:
-#     #     return jsonify({"msg": "No users found or password unchanged."}), 404
+    # Check how many users were modified
+    if result.modified_count > 0:
+        return jsonify({"msg": f"Password set to '123456' for {result.modified_count} users."}), 200
+    else:
+        return jsonify({"msg": "No users found or password unchanged."}), 404
     
-#     # Update the password for all users in the collection
-#     result1 = mongo.db.mpwz_notifylist.update_many(
-#         {}, 
-#         {"$set": {"notify_status": common_status}}
-#     )
+    # Update the password for all users in the collection
+    # result1 = mongo.db.mpwz_users.update_many(
+    #     {}, 
+    #     {"$set": {"role_type": common_status}}
+    # )
     
-#     if result1.modified_count > 0:
-#         return jsonify({"msg": f"notify_status set to {common_status} for {result1.modified_count} users."}), 200
-#     else:
-#         return jsonify({"msg": "No Change  in Notification stats."}), 404
+    # if result1.modified_count > 0:
+    #     return jsonify({"msg": f"role_type set to {common_status} for {result1.modified_count} users."}), 200
+    # else:
+    #     return jsonify({"msg": "No Change  in role_type."}), 404
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -128,7 +129,6 @@ def view_profile():
         current_user = get_jwt_identity()
         username = current_user['username']
         request_data = {}
-
         # Retrieve the user profile from the database
         user = mongo.db.mpwz_users.find_one({"employee_number": username}, {"_id": 0})
 
@@ -182,38 +182,43 @@ def notify_status():
                     response_data = {"msg": "User  Profile loaded successfully", "BearrToken": response_statuses}                     
                     log_entry_event.log_api_call(request_data, response_data)
 
-                return jsonify({"statuses": response_statuses}), 200
+                return jsonify(response_statuses), 200
             else:
-                return jsonify({"statuses": "No status added by mpwz admin"}), 404
+                return jsonify({"statuses": "No button_name added by mpwz admin"}), 404
 
         elif request.method == 'POST':
             data = request.get_json()
-            if 'status' not in data:
-                return jsonify({"msg": "Status is required"}), 400 
-
-            myseq_mpwz_id = seq_gen.get_next_sequence('mpwz_notify_status')   
-            new_status = {
-                "mpwz_id": myseq_mpwz_id,
-                "status": data['status'],
-                "action_by": username,
-                "action_at": datetime.datetime.now().isoformat()
-            } 
-            result = mongo.db.mpwz_notify_status.insert_one(new_status)
-            if result:
-                new_status['_id'] = str(result.inserted_id)  
-                new_status['server_response'] = "New status added successfully"  
-                # Make log entry in table        
-                request_data = data 
-                request_data['current_api'] = request.full_path
-                request_data['client_ip'] = request.remote_addr
-                response_data = {"msg": "New Status Added successfully", "BearrToken": new_status}                     
-                log_entry_event.log_api_call(request_data, response_data)
-                return jsonify(new_status), 201
-            else:
-                return jsonify({"msg": "Error while adding new status into database"}), 500
+            if 'button_name' not in data:
+                return jsonify({"msg": "button_name is required"}), 400 
+        
+            existing_record = mongo.db.mpwz_notify_status.find_one({"button_name": data["button_name"]})
+            if existing_record:      
+                return jsonify({"msg": "Records with button_name already existed in database."}), 400
+            else: 
+                myseq_mpwz_id = seq_gen.get_next_sequence('mpwz_notify_status')   
+                new_status = {
+                    "mpwz_id": myseq_mpwz_id,
+                    "button_name": data['button_name'],
+                    "created_by": username,
+                    "created_on": datetime.datetime.now().isoformat(),
+                    "updated_by": "NA",
+                    "updated_on": "NA"
+                } 
+                result = mongo.db.mpwz_notify_status.insert_one(new_status)
+                if result:
+                    new_status['_id'] = str(result.inserted_id)  
+                    new_status['server_response'] = "New status added successfully"  
+                    # Make log entry in table        
+                    request_data = data 
+                    request_data['current_api'] = request.full_path
+                    request_data['client_ip'] = request.remote_addr
+                    response_data = {"msg": "New Status Added successfully", "BearrToken": new_status}                     
+                    log_entry_event.log_api_call(request_data, response_data)
+                    return jsonify(new_status), 201
+                else:
+                    return jsonify({"msg": "Error while adding new status into database"}), 500
         else:
             return jsonify({"msg": "Invalid request encountered at server."}), 400
-
     except Exception as e:
         return jsonify({"msg": f"An error occurred while processing the request. Please try again later. {str(e)}"}), 500
 
@@ -242,7 +247,7 @@ def notify_integrated_applist():
                     response_data = {"msg": "New App integrated successfully", "BearrToken": response_statuses}                     
                     log_entry_event.log_api_call(request_data, response_data)
 
-                return jsonify({"app_name_list": response_statuses}), 200
+                return jsonify(response_statuses), 200
             else:
                 return jsonify({"msg": "No apps added by mpwz admin"}), 404
 
@@ -250,29 +255,35 @@ def notify_integrated_applist():
             data = request.get_json()
             if 'app_name' not in data:
                 return jsonify({"msg": "app_name is required"}), 400
+        
+            existing_record = mongo.db.mpwz_integrated_app.find_one({"app_name": data["app_name"]})
+            if existing_record:      
+                return jsonify({"msg": "Records with app_name already existed in database."}), 400
+            else: 
 
-            mpwz_id_sequenceno = seq_gen.get_next_sequence('mpwz_integrated_app')
-            app_name_list = {
-                "mpwz_id": mpwz_id_sequenceno,
-                "app_name": data['app_name'],
-                "action_by": username,
-                "action_at": datetime.datetime.now().isoformat()
-            }
+                mpwz_id_sequenceno = seq_gen.get_next_sequence('mpwz_integrated_app')
+                app_name_list = {
+                    "mpwz_id": mpwz_id_sequenceno,
+                    "app_name": data['app_name'],
+                    "created_by": username,
+                    "created_on": datetime.datetime.now().isoformat(),
+                    "updated_by": "NA",
+                    "updated_on": "NA"
+                }
 
-            result = mongo.db.mpwz_integrated_app.insert_one(app_name_list)
-            if result:
-                app_name_list['_id'] = str(result.inserted_id)
-                app_name_list['server_response'] = "New app integration info added successfully"
-
-                # Make log entry in table        
-                request_data = data
-                request_data['current_api'] = request.full_path
-                request_data['client_ip'] = request.remote_addr
-                response_data = {"msg": "New App integrated successfully", "BearrToken": app_name_list}                     
-                log_entry_event.log_api_call(request_data, response_data)
-                return jsonify({"app_name_list": app_name_list}), 201
-            else:
-                return jsonify({"msg": "Unable to add new app details in the system, try again..."}), 500
+                result = mongo.db.mpwz_integrated_app.insert_one(app_name_list)
+                if result:
+                    app_name_list['_id'] = str(result.inserted_id)
+                    app_name_list['server_response'] = "New app integration info added successfully"
+                    # Make log entry in table        
+                    request_data = data
+                    request_data['current_api'] = request.full_path
+                    request_data['client_ip'] = request.remote_addr
+                    response_data = {"msg": "New App integrated successfully", "BearrToken": app_name_list}                     
+                    log_entry_event.log_api_call(request_data, response_data)
+                    return jsonify(app_name_list), 200
+                else:
+                    return jsonify({"msg": "Unable to add new app details in the system, try again..."}), 500
         else:
             return jsonify({"msg": "Invalid request encountered at server."}), 400
 
@@ -286,7 +297,6 @@ def action_history():
         current_user = get_jwt_identity()
         username = current_user['username']
         application_type = request.args.get('application_type')
-
         if request.method == 'GET':
             if application_type:
                 action_history_records = list(mongo.db.mpwz_user_action_history.find(
@@ -319,7 +329,7 @@ def action_history():
                         response_data = {"msg": "Action History loaded successfully", "BearrToken": response_statuses}
                         log_entry_event.log_api_call(request_data, response_data)
 
-                    return jsonify({"action_history": response_statuses}), 200
+                    return jsonify(response_statuses), 200
                 else:
                     return jsonify({"msg": "No action history found."}), 404
             else:
@@ -337,27 +347,31 @@ def action_history():
 
                 if not all(field in data for field in required_fields):
                     return jsonify({"msg": "Missing required fields"}), 400
+                else:        
+                    existing_record = mongo.db.mpwz_user_action_history.find_one({"notify_refsys_id": data["notify_refsys_id"]})
+                    if existing_record:      
+                        return jsonify({"msg": "Records with notify_refsys_id already existed in database."}), 400
+                    else: 
+                        mpwz_id_actionhistory = seq_gen.get_next_sequence('mpwz_user_action_history')
+                        data['sequence_no'] = str(data['mpwz_id'])
+                        data['mpwz_id'] = str(mpwz_id_actionhistory)
+                        data['notify_from_id'] = username
+                        data['action_by'] = username
+                        data['action_at'] = datetime.datetime.now().isoformat()
 
-                mpwz_id_actionhistory = seq_gen.get_next_sequence('mpwz_user_action_history')
-                data['sequence_no'] = str(data['mpwz_id'])
-                data['mpwz_id'] = str(mpwz_id_actionhistory)
-                data['notify_from_id'] = username
-                data['action_by'] = username
-                data['action_at'] = datetime.datetime.now().isoformat()
+                        response = mongo.db.mpwz_user_action_history.insert_one(data)
+                        if response:
+                            data['_id'] = str(response.inserted_id)                    
+                            # Log entry in table        
+                            request_data = data
+                            request_data['current_api'] = request.full_path
+                            request_data['client_ip'] = request.remote_addr
+                            response_data = {"msg": "Action History updated successfully", "BearrToken": current_user}
+                            log_entry_event.log_api_call(request_data, response_data)
 
-                response = mongo.db.action_history_erp.insert_one(data)
-                if response:
-                    data['_id'] = str(response.inserted_id)                    
-                    # Log entry in table        
-                    request_data = data
-                    request_data['current_api'] = request.full_path
-                    request_data['client_ip'] = request.remote_addr
-                    response_data = {"msg": "Action History updated successfully", "BearrToken": current_user}
-                    log_entry_event.log_api_call(request_data, response_data)
-
-                    return jsonify({"msg": f"Action history updated successfully, mpwz_id: {mpwz_id_actionhistory}"}), 200
-                else:
-                    return jsonify({"msg": "Failed to update action history logs"}), 400
+                            return jsonify({"msg": f"Action history updated successfully, mpwz_id: {mpwz_id_actionhistory}"}), 200
+                        else:
+                            return jsonify({"msg": "Failed to update action history logs"}), 400
             else:
                 return jsonify({"msg": "Invalid request encountered at server."}), 400
     except Exception as e:
@@ -437,42 +451,39 @@ def my_request_notification_list():
         app_exists = mongo.db.mpwz_integrated_app.find_one({"app_name": application_type})
         if not app_exists:
             return jsonify({"msg": "Application type does not exist."}), 400 
+        else:
+            response_data = {
+                'username': username,
+                'notifications': []
+            }
+            query = {
+                'app_source': application_type,
+                'notify_from_id': username,
+                'notify_status':notification_status
+            }
 
-        # Initialize response data
-        response_data = {
-            'username': username,
-            'notifications': []
-        }
-        # Build the query for filters
-        query = {
-            'app_source': application_type,
-            'notify_from_id': username,
-            'notify_status':notification_status
-        }
+            # if notification_status:
+            #     query['notify_status'] = notification_status
 
-        # if notification_status:
-        #     query['notify_status'] = notification_status
+            # Fetching notifications by query
+            notifications = mongo.db.mpwz_notifylist.find(query)
 
-        # Fetching notifications by query
-        notifications = mongo.db.mpwz_notifylist.find(query)
+            # Process notifications
+            for notification in notifications:
+                notification_copy = notification.copy()  
+                notification_copy.pop('_id', None)  
+                response_data['notifications'].append(notification_copy)
 
-        # Process notifications
-        for notification in notifications:
-            notification_copy = notification.copy()  
-            notification_copy.pop('_id', None)  
-            response_data['notifications'].append(notification_copy)
-
-        # Log the notification list retrieval
-        request_data = current_user
-        request_data['current_api'] = request.full_path
-        request_data['client_ip'] = request.remote_addr
-        log_entry_event.log_api_call(request_data, {"msg": "My request info list loaded successfully", "BearrToken": response_data['notifications']})
+            # Log the notification list retrieval
+            request_data = current_user
+            request_data['current_api'] = request.full_path
+            request_data['client_ip'] = request.remote_addr
+            log_entry_event.log_api_call(request_data, {"msg": "My request info list loaded successfully", "BearrToken": response_data['notifications']})
 
         if not response_data['notifications']:
             return jsonify({"msg": "No notifications found."}), 404
-
-        return jsonify(response_data), 200
-
+        else:
+            return jsonify(response_data), 200
     except Exception as e:
         return jsonify({"msg": f"An error occurred while processing the request. Please try again later. {str(e)}"}), 500
 
@@ -483,19 +494,14 @@ def pending_notification_count():
         current_user = get_jwt_identity()
         username = current_user['username'] 
         notification_status = request.args.get('notification_status')
-
-        # Initialize response data
         response_data = {
             'username': username,
             'total_pending_count': 0,
             'app_notifications_count': {}
         }
-        
-        # Build the match stage based on whether notification_status is provided
         match_stage = {
             'notify_to_id': username
-        }
-        
+        }        
         if notification_status:
             match_stage['notify_status'] = notification_status
 
@@ -514,8 +520,7 @@ def pending_notification_count():
             }
         ] 
         
-        notification_counts = mongo.db.mpwz_notifylist.aggregate(pipeline)
-        
+        notification_counts = mongo.db.mpwz_notifylist.aggregate(pipeline)        
         for doc in notification_counts:
             app_source = doc['_id']['app_source']
             notify_status = doc['_id']['notify_status']
@@ -545,7 +550,6 @@ def pending_notification_count():
             return jsonify({"msg": "Failed to update pending request for action logs"}), 400     
 
         return jsonify(response_data), 200
-
     except Exception as e:
         return jsonify({"msg": "An error occurred while processing your request", "error": str(e)}), 500
     
@@ -606,10 +610,8 @@ def pending_notification_list():
                 request_data['client_ip'] = request.remote_addr
                 log_entry_event.log_api_call(request_data, {"msg": "action pending info list loaded successfully", "BearrToken": response_statuses})       
         else:
-            return jsonify({"msg": "No pending notifications found."}), 404 
-
+            return jsonify({"msg": "No pending notifications found."}), 400
         return jsonify(response_data), 200
-
     except Exception as e:
         return jsonify({"msg": "An error occurred while processing your request", "error": str(e)}), 500
      

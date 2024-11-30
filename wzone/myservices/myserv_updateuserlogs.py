@@ -2,7 +2,7 @@ import datetime
 from urllib import request
 from pymongo import MongoClient
 
-class my_services:
+class myserv_updateuserlogs:
     def __init__(self):
         # Set up MongoDB client and database
         self.client = MongoClient('mongodb://localhost:27017') 
