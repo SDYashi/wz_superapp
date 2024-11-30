@@ -626,9 +626,9 @@ def update_notify_status_inhouse_app():
         app_source = request.args.get('app_source')
         app_exists = mongo.db.mpwz_integrated_app.find_one({"app_name": app_source})
         if not app_exists:
-            return jsonify({"msg": "Requesting application is not integrated with our server."}), 400
+            return jsonify({"msg": f"Requesting application is not integrated with our server:- {app_exists}"}), 400
+       
         required_fields = ["mpwz_id", "app_source", "app_source_appid", "notify_status", "notify_refsys_id", "notify_to_id", "notify_from_id","notify_type"]
-
         for field in required_fields:
             if field not in data:
                 return jsonify({"msg": f"{field} is required"}), 400
@@ -717,7 +717,7 @@ def update_notify_status_inhouse_app():
         return jsonify({"msg": f"Something went wrong while processing request in primary stage {str(e)}"}), 500
      
 ## Extenal API for Get Data from Remote Servers ##
-@app.route('/shared-call/api/ngb/post-notify-list', methods=['POST'])
+@app.route('/shared-call/api/ngb/post-notify-info', methods=['POST'])
 @jwt_required()
 def create_notification_from_ngb():
     current_user = get_jwt_identity()
@@ -725,7 +725,6 @@ def create_notification_from_ngb():
     username = current_user['username']     
     application_type = request.args.get('app_source')    
     app_request_type = request.args.get('app_request_type')
-
     print(f"requesting data for {app_request_type} and request comming from {application_type}")   
 
     app_exists = mongo.db.mpwz_integrated_app.find_one({"app_name": application_type})
@@ -733,46 +732,50 @@ def create_notification_from_ngb():
         return jsonify({"msg": "requesting application is not integrated with our server."}), 400 
     else: 
 
-        required_fields_map = {
-            "CC4": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
-            "CCB": ["id", "postingDate", "amount", "code", "ccbRegisterNo", "remark", "consumerNo"]
-        }
-        # Check if the data_type exists in the required fields map
-        if app_request_type in required_fields_map:
-            required_fields = required_fields_map[app_request_type]
-            for field in required_fields:
-                if field not in data:
-                    return jsonify({"msg": f"{field} is required for {app_request_type}."}), 400
-        else:
-            return jsonify({"msg": f"Invalid data type: {app_request_type}."}), 400  
+        # required_fields_map = {
+        #     "CC4": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
+        #     "CCB": ["id", "postingDate", "amount", "code", "ccbRegisterNo", "remark", "consumerNo"]
+        # }
+        # # Check if the data_type exists in the required fields map
+        # if app_request_type in required_fields_map:
+        #     required_fields = required_fields_map[app_request_type]
+        #     for field in required_fields:
+        #         if field not in data:
+        #             return jsonify({"msg": f"{field} is required for {app_request_type}."}), 400
+        # else:
+        #     return jsonify({"msg": f"Invalid data type: {app_request_type}."}), 400  
         
         existing_record = mongo.db.mpwz_notifylist.find_one({"notify_refsys_id": data["notify_refsys_id"]})
         if existing_record:      
             return jsonify({"msg": "Records with notify_refsys_id already existed in database."}), 400
         else:  
-            # Generate sequence number for mpwz_id
             mpwz_id_sequenceno = seq_gen.get_next_sequence('mpwz_notifylist')
             if mpwz_id_sequenceno:  
                 if app_request_type=="CC4":
                     data['mpwz_id'] = mpwz_id_sequenceno
                     data['app_source'] = "ngb"
-                    data['app_source_appid'] = data['app_source_appid']
-                    data['notify_status'] = data['notify_status']
-                    data['notify_refsys_id'] = data['notify_refsys_id']
-                    data['notify_to_id'] = data['notify_to_id']
-                    data['notify_from_id'] = data['notify_from_id']
-                    data['notify_to_name'] = data['notify_to_name']
-                    data['notify_from_name'] = data['notify_from_name']
-                else:
+                    data['app_source_appid'] =  "NA"
+                    data['notify_status'] =  "NA"
+                    data['notify_refsys_id'] =  "NA"
+                    data['notify_to_id'] =  "NA"
+                    data['notify_from_id'] =  "NA"
+                    data['notify_to_name'] =  "NA"
+                    data['notify_from_name'] =  "NA"
+                    data['app_request_type'] =  "NA" 
+
+                if app_request_type=="CCB":
                     data['mpwz_id'] = mpwz_id_sequenceno
                     data['app_source'] = "ngb"
-                    data['app_source_appid'] = data['app_source_appid']
-                    data['notify_status'] = data['notify_status']
-                    data['notify_refsys_id'] = data['notify_refsys_id']
-                    data['notify_to_id'] = data['notify_to_id']
-                    data['notify_from_id'] = data['notify_from_id']
-                    data['notify_to_name'] = data['notify_to_name']
-                    data['notify_from_name'] = data['notify_from_name']
+                    data['app_source_appid'] =  "NA"
+                    data['notify_status'] =  "NA"
+                    data['notify_refsys_id'] =  "NA"
+                    data['notify_to_id'] =  "NA"
+                    data['notify_from_id'] =  "NA"
+                    data['notify_to_name'] =  "NA"
+                    data['notify_from_name'] =  "NA"
+                    data['app_request_type'] =  "NA"
+                else:
+                     return jsonify({"msg": f"invalid app request type not register here:- {app_request_type}"}), 200 
             try:
                 result = mongo.db.mpwz_notifylist.insert_one(data)
                 if result:
@@ -798,53 +801,52 @@ def create_notification_from_ngb():
                 seq_gen.reset_sequence('mpwz_notifylist_erp')
                 return jsonify({"msg": f"Failed to insert data: {str(errors)}"}), 500
 
-@app.route('/shared-call/api/erp/post-notify-list', methods=['POST'])
+@app.route('/shared-call/api/erp/post-notify-info', methods=['POST'])
 @jwt_required()
 def create_notification_from_erp():
     current_user = get_jwt_identity()
     data = request.get_json() 
     username = current_user['username']     
     application_type = request.args.get('app_source')    
-    app_request_type = request.args.get('app_request_type') 
-    
-    print(f"requesting data for {app_request_type} and request comming from {application_type}")   
+    # app_request_type = request.args.get('app_request_type')     
+    # print(f"requesting data for {app_request_type} and request comming from {application_type}")   
 
     app_exists = mongo.db.mpwz_integrated_app.find_one({"app_name": application_type})
     if not app_exists:
         return jsonify({"msg": "requesting application is not integrated with our server."}), 400 
     else: 
-        required_fields_map = {
-            "LEAVE": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
-            "PROJECT": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
-            "TADA": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
-            "BILL": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"]
-        }
-        # Check if the data_type exists in the required fields map
-        if app_request_type in required_fields_map:
-            required_fields = required_fields_map[app_request_type]
-            for field in required_fields:
-                if field not in data:
-                    return jsonify({"msg": f"{field} is required for {app_request_type}."}), 400
-        else:
-            return jsonify({"msg": f"Invalid data type: {app_request_type}."}), 400  
-        
-        existing_record = mongo.db.mpwz_notifylist.find_one({"notify_refsys_id": data["notify_refsys_id"]})
-        if existing_record:      
-            return jsonify({"msg": "Records with notify_refsys_id already existed in database."}), 400
-        else:  
+        # required_fields_map = {
+        #     "LEAVE": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
+        #     "PROJECT": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
+        #     "TADA": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"],
+        #     "BILL": ["id", "locationCode", "approver", "billId", "billCorrectionProfileInitiatorId", "status", "remark", "updatedBy", "updatedOn"]
+        # }
+
+        # if app_request_type in required_fields_map:
+        #     required_fields = required_fields_map[app_request_type]
+        #     for field in required_fields:
+        #         if field not in data:
+        #             return jsonify({"msg": f"{field} is required for {app_request_type}."}), 400
+        # else:
+        #     return jsonify({"msg": f"Invalid data type: {app_request_type}."}), 400          
+        # existing_record = mongo.db.mpwz_notifylist.find_one({"notify_refsys_id": data["notify_refsys_id"]})
+        # if existing_record:      
+        #     return jsonify({"msg": "Records with notify_refsys_id already existed in database."}), 400
+        # else:  
+
             # Generate sequence number for mpwz_id
             mpwz_id_sequenceno = seq_gen.get_next_sequence('mpwz_notifylist')
             if mpwz_id_sequenceno:
                     data['mpwz_id'] = mpwz_id_sequenceno
                     data['app_source'] = "ngb"
-                    data['app_source_appid'] = data['app_source_appid']
-                    data['notify_status'] = data['notify_status']
-                    data['notify_refsys_id'] = data['notify_refsys_id']
-                    data['notify_to_id'] = data['notify_to_id']
-                    data['notify_from_id'] = data['notify_from_id']
-                    data['notify_to_name'] = data['notify_to_name']
-                    data['notify_from_name'] = data['notify_from_name']
-                    data['app_request_type'] = data['app_request_type']
+                    data['app_source_appid'] =  "NA"
+                    data['notify_status'] =  "NA"
+                    data['notify_refsys_id'] =  "NA"
+                    data['notify_to_id'] =  "NA"
+                    data['notify_from_id'] =  "NA"
+                    data['notify_to_name'] =  "NA"
+                    data['notify_from_name'] =  "NA"
+                    data['app_request_type'] =  "NA"
             try:
                 result = mongo.db.mpwz_notifylist.insert_one(data)
                 if result:
@@ -869,50 +871,6 @@ def create_notification_from_erp():
             except Exception as errors:
                 seq_gen.reset_sequence('mpwz_notifylist')
                 return jsonify({"msg": f"Failed to insert data: {str(errors)}"}), 500
-
-# this api is only for testng purpose
-@app.route('/shared-call/api/ngb/post-notify-list-test', methods=['POST'])
-def create_notification_testing():
-    data = request.get_json() 
-    try:
-        data_type = data['code']
-        if data_type:        
-            request_type ="CCB"
-        else:
-            request_type="CC4"
-
-        if request_type=="CC4":
-            myseq_mpwz_id = seq_gen.get_next_sequence('mpwz_notify_status') 
-            data['mpwz_id'] = myseq_mpwz_id
-            data['app_source'] = "ngb"
-            data['app_source_appid'] = data['approvalStatus']
-            data['notify_status'] = data['approvalStatus']
-            data['notify_refsys_id'] = data['approvalStatus']
-            data['notify_to_id'] = data['approvalStatus']
-            data['notify_from_id'] = data['approvalStatus']
-            data['notify_to_name'] = data['approvalStatus']
-            data['notify_from_name'] = data['approvalStatus']
-        else:
-            myseq_mpwz_id = seq_gen.get_next_sequence('mpwz_notify_status') 
-            data['mpwz_id'] = myseq_mpwz_id
-            data['app_source'] = "ngb"
-            data['app_source_appid'] = data['approvalStatus']
-            data['notify_status'] = data['approvalStatus']
-            data['notify_refsys_id'] = data['approvalStatus']
-            data['notify_to_id'] = data['approvalStatus']
-            data['notify_from_id'] = data['approvalStatus']
-            data['notify_to_name'] = data['approvalStatus']
-            data['notify_from_name'] = data['approvalStatus']
-
-    except Exception as e:
-           return jsonify({"error new": str(e)}), 500
-    
-    # Insert the data into MongoDB
-    try:
-        mongo.db.mpwz_notifylist.insert_one(data)
-        return jsonify({"message": "Data inserted successfully"}), 201
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     # app.run(debug=False)
