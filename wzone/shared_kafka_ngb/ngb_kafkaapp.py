@@ -20,16 +20,14 @@ consumer_service.start()
 
 # Route to start Kafka consumer
 @kafka_blueprint.before_app_first_request
-def start_kafka_consumer():
-  
+def start_kafka_consumer():  
     logging.info("Starting Kafka consumer...")
     consumer_service.start()
 
 # Route to stop Kafka consumer 
 @kafka_blueprint.route('/stop', methods=['POST'])
 @jwt_required()
-def stop_kafka():
-  
+def stop_kafka():  
     logging.info("Stopping Kafka consumer...")
     consumer_service.stop()
     return jsonify({"msg": "Kafka consumer stopped."}), 200
@@ -37,6 +35,5 @@ def stop_kafka():
 # A simple status route to check if the Kafka consumer is active
 @kafka_blueprint.route('/status', methods=['GET'])
 @jwt_required()
-def status():
- 
+def status(): 
     return jsonify({"status": "Kafka consumer is active."}), 200

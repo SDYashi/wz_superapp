@@ -1,13 +1,13 @@
 import datetime
 from urllib import request
 from pymongo import MongoClient
+from myserv_mongodbconnect import myserv_mongodbconnect 
 
 class myserv_updateuserlogs:
-    def __init__(self):
-        # Set up MongoDB client and database
-        self.client = MongoClient('mongodb://localhost:27017') 
-        self.db = self.client['admin'] 
-        self.collection = self.db['mpwz_users_logs']  
+    def __init__(self):  
+        mongo_db = myserv_mongodbconnect()  
+        dbconnect = mongo_db.get_connection() 
+        self.collection = dbconnect['mpwz_users_logs']  
         self.api_call_history = []  
     def log_api_call(self, request_data, response_data):
         log_entry = {

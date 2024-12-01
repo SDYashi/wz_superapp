@@ -1,13 +1,13 @@
 from pymongo import MongoClient
+from myserv_mongodbconnect import myserv_mongodbconnect 
 
-class MongoDBUpdater:
-    def __init__(self):
-        # Connect to MongoDB
-        self.client = MongoClient('mongodb://localhost:27017/')
-        self.db = self.client['admin']
+class myserv_updatedbproperties:
+    def __init__(self):  
+            mongo_db = myserv_mongodbconnect()  
+            dbconnect = mongo_db.get_connection() 
 
     def change_field_type(self, collection_name, field_name):
-        collection = self.db[collection_name]
+        collection = self.dbconnect[collection_name]
         result = collection.update_many(
             {field_name: {"$type": "int"}},  
             [{"$set": {field_name: {"$toString": f"${field_name}"}}}]  
@@ -16,7 +16,7 @@ class MongoDBUpdater:
 
     
     def change_all_fields_to_string(self, collection_name):
-        collection = self.db[collection_name]
+        collection = self.dbconnect[collection_name]
         cursor = collection.find()
         for doc in cursor:
             updates = {}
@@ -27,6 +27,6 @@ class MongoDBUpdater:
                 print(f"Updated document with _id: {doc['_id']}")    
 
 if __name__ == "__main__":
-    db_updater = MongoDBUpdater()
+    db_updater = myserv_updatedbproperties()
     # db_updater.change_field_type(collection_name='mpwz_users', field_name='employee_number')
     db_updater.change_all_fields_to_string(collection_name='mpwz_users')

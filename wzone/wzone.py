@@ -35,30 +35,25 @@ jwt = JWTManager(app)
 # this api is only for admin single time purpose where application pushed on server
 @app.route('/set_common_password', methods=['PUT'])
 def set_common_password():
-    # Get the common password
+    # Set the common password
     common_password = "123456"
-    common_status = ""
-
-    # Hash the common password
     hashed_password = bcrypt.hashpw(common_password.encode('utf-8'), bcrypt.gensalt())
-    # Update the password for all users in the collection
     result = mongo.db.mpwz_users.update_many(
         {}, 
         {"$set": {"password": hashed_password}}
     )
-
-    # Check how many users were modified
     if result.modified_count > 0:
         return jsonify({"msg": f"Password set to '123456' for {result.modified_count} users."}), 200
     else:
         return jsonify({"msg": "No users found or password unchanged."}), 404
     
+    # update columns values in mongo database collections
+    # common_status = ""
     # Update the password for all users in the collection
     # result1 = mongo.db.mpwz_users.update_many(
     #     {}, 
     #     {"$set": {"role_type": common_status}}
-    # )
-    
+    # )    
     # if result1.modified_count > 0:
     #     return jsonify({"msg": f"role_type set to {common_status} for {result1.modified_count} users."}), 200
     # else:
@@ -70,17 +65,19 @@ def login():
         data = request.get_json()
         username = data.get("username") 
         password = data.get("password")  
-        # Retrieve the user from the database
+        # Retrieve the user from colection
         user = mongo.db.mpwz_users.find_one({"username": username}) 
-
         if user:
             stored_hashed_password = user['password']
-
-            # Check if the password is correct using bcrypt
             if bcrypt.checkpw(password.encode('utf-8'), stored_hashed_password):
-                access_token = create_access_token(identity={"username": username})                
+                 # Check if the user is in the specific users collection
+                integrations_user = mongo.db.mpwzmpwz_integration_apiusers_users.find_one({'username': username,'status': 'ACTIVE'})
+                if integrations_user:  # User is a specific user for integration from external  servers
+                    access_token = create_access_token(identity={"username": username}, expires_delta=datetime.timedelta(days=365))
+                else:  # User mobile app user only
+                    access_token = create_access_token(identity={"username": username}, expires_delta=datetime.timedelta(hours=1))
                 request_data = username
-                response_data = {"status": "success", "message": "Logged in successfully", "BearerToken": access_token}
+                response_data = {"message": "Logged in successfully", "BearerToken": access_token}
                 log_entry_event.log_api_call(request_data, response_data)
 
                 return jsonify(access_token=access_token), 200            
@@ -481,7 +478,7 @@ def my_request_notification_list():
             log_entry_event.log_api_call(request_data, {"msg": "My request info list loaded successfully", "BearrToken": response_data['notifications']})
 
         if not response_data['notifications']:
-            return jsonify({"msg": "No notifications found."}), 404
+            return jsonify({"msg": f"No notifications found for user:- {username}"}), 404
         else:
             return jsonify(response_data), 200
     except Exception as e:
@@ -724,7 +721,7 @@ def create_notification_from_ngb():
     data = request.get_json() 
     username = current_user['username']     
     application_type = request.args.get('app_source')    
-    app_request_type = request.args.get('app_request_type')
+    app_request_type =  data['app_request_type']
     print(f"requesting data for {app_request_type} and request comming from {application_type}")   
 
     app_exists = mongo.db.mpwz_integrated_app.find_one({"app_name": application_type})
@@ -761,7 +758,11 @@ def create_notification_from_ngb():
                     data['notify_from_id'] =  "NA"
                     data['notify_to_name'] =  "NA"
                     data['notify_from_name'] =  "NA"
+                    data['notify_datetime'] =  "NA"
                     data['app_request_type'] =  "NA" 
+                    data['notify_description'] =  "NA"
+                    data['notify_comments'] =  "NA"
+                    data['notify_notes'] =  "NA"    
 
                 if app_request_type=="CCB":
                     data['mpwz_id'] = mpwz_id_sequenceno
@@ -773,7 +774,11 @@ def create_notification_from_ngb():
                     data['notify_from_id'] =  "NA"
                     data['notify_to_name'] =  "NA"
                     data['notify_from_name'] =  "NA"
-                    data['app_request_type'] =  "NA"
+                    data['notify_datetime'] =  "NA"
+                    data['app_request_type'] =  "NA" 
+                    data['notify_description'] =  "NA"
+                    data['notify_comments'] =  "NA"
+                    data['notify_notes'] =  "NA"
                 else:
                      return jsonify({"msg": f"invalid app request type not register here:- {app_request_type}"}), 200 
             try:
@@ -838,7 +843,7 @@ def create_notification_from_erp():
             mpwz_id_sequenceno = seq_gen.get_next_sequence('mpwz_notifylist')
             if mpwz_id_sequenceno:
                     data['mpwz_id'] = mpwz_id_sequenceno
-                    data['app_source'] = "ngb"
+                    data['app_source'] = "erp"
                     data['app_source_appid'] =  "NA"
                     data['notify_status'] =  "NA"
                     data['notify_refsys_id'] =  "NA"
@@ -846,7 +851,11 @@ def create_notification_from_erp():
                     data['notify_from_id'] =  "NA"
                     data['notify_to_name'] =  "NA"
                     data['notify_from_name'] =  "NA"
-                    data['app_request_type'] =  "NA"
+                    data['notify_datetime'] =  "NA"
+                    data['app_request_type'] =  "NA" 
+                    data['notify_description'] =  "NA"
+                    data['notify_comments'] =  "NA"
+                    data['notify_notes'] =  "NA"
             try:
                 result = mongo.db.mpwz_notifylist.insert_one(data)
                 if result:
@@ -874,4 +883,4 @@ def create_notification_from_erp():
 
 if __name__ == '__main__':
     # app.run(debug=False)
-    app.run(host='0.0.0.0', port=8000,debug=False)
+  app.run(host='0.0.0.0', port=8000, debug=False, threaded=True)

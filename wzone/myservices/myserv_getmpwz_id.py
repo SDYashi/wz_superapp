@@ -1,8 +1,8 @@
 from pymongo.errors import PyMongoError
+from myserv_mongodbconnect import myserv_mongodbconnect 
 
 class myserv_getmpwz_id:
-    def __init__(self):
-        from myservices.myserv_mongodbconnect import myserv_mongodbconnect        
+    def __init__(self):       
         mongo_db = myserv_mongodbconnect()  
         dbconnect = mongo_db.get_connection()        
         self.sequence_collection = dbconnect['mpwz_sequences']
